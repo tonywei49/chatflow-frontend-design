@@ -1089,7 +1089,7 @@ const ChatWorkspace = () => {
                 }}
                 rows={1}
                 className="max-h-48 min-h-[44px] flex-1 resize-y border-none bg-transparent px-3 py-2 text-sm text-[#111827] outline-none"
-                placeholder={`和 ${APP_INFO.title} 聊天`}
+                placeholder="写上这封邮件的主要诉求或期望达成目的"
               />
               <button
                 type="button"

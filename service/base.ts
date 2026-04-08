@@ -300,7 +300,7 @@ export const upload = (fetchOptions: any): Promise<any> => {
     xhr.withCredentials = true
     xhr.onreadystatechange = function () {
       if (xhr.readyState === 4) {
-        if (xhr.status === 200) {
+        if (/^(2|3)\d{2}$/.test(String(xhr.status))) {
           const responseText = xhr.responseText || xhr.response
 
           try {
@@ -311,7 +311,24 @@ export const upload = (fetchOptions: any): Promise<any> => {
           }
         }
         else {
-          reject(xhr)
+          let errorMessage = `Upload failed (${xhr.status})`
+
+          try {
+            const responseText = xhr.responseText || xhr.response
+            if (responseText) {
+              const parsed = JSON.parse(responseText)
+              if (typeof parsed?.message === 'string' && parsed.message.trim())
+                errorMessage = parsed.message
+              else if (typeof responseText === 'string' && responseText.trim())
+                errorMessage = responseText
+            }
+          }
+          catch {
+            if (typeof xhr.responseText === 'string' && xhr.responseText.trim())
+              errorMessage = xhr.responseText
+          }
+
+          reject(new Error(errorMessage))
         }
       }
     }
