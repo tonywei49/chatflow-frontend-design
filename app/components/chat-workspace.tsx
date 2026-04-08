@@ -14,13 +14,15 @@ import {
   TrashIcon,
   XMarkIcon,
 } from '@heroicons/react/24/outline'
-import { API_KEY, APP_ID, APP_INFO } from '@/config'
+import { APP_ID, APP_INFO } from '@/config'
 import useBreakpoints, { MediaType } from '@/hooks/use-breakpoints'
 import {
+  activateInviteCode,
   deleteConversation,
   fetchAppParams,
   fetchConversationMessages,
   fetchConversations,
+  fetchInviteGateStatus,
   renameConversation,
   sendChatMessage,
   uploadChatFile,
@@ -32,6 +34,7 @@ import type {
   ConversationMessage,
   FileUploadCategory,
   FileUploadConfig,
+  InviteGateStatus,
   PromptVariable,
   UnsupportedPromptVariable,
 } from '@/types/app'
@@ -48,6 +51,12 @@ type RenderMessage = {
   createdAt: number
   pending?: boolean
   error?: boolean
+}
+
+type InviteActivationState = InviteGateStatus & {
+  code: string
+  error: string | null
+  isSubmitting: boolean
 }
 
 const FILE_EXTENSION_MAP: Record<FileUploadCategory, string[]> = {
@@ -246,6 +255,15 @@ const ChatWorkspace = () => {
   const [attachments, setAttachments] = useState<ChatAttachment[]>([])
   const [isLoadingMessages, setIsLoadingMessages] = useState(false)
   const [isSending, setIsSending] = useState(false)
+  const [inviteGate, setInviteGate] = useState<InviteActivationState>({
+    enabled: false,
+    activated: false,
+    remaining: null,
+    quota: null,
+    code: '',
+    error: null,
+    isSubmitting: false,
+  })
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -274,7 +292,7 @@ const ChatWorkspace = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
   }, [messages, isSending])
 
-  const canBoot = Boolean(APP_ID && API_KEY)
+  const canBoot = Boolean(APP_ID)
 
   const fileUploadConfig = parameters?.file_upload || null
   const attachmentAcceptList = useMemo(() => buildAttachmentAcceptList(fileUploadConfig), [fileUploadConfig])
@@ -311,9 +329,21 @@ const ChatWorkspace = () => {
     setConversations(nextConversations)
   }
 
+  const refreshInviteGate = useCallback(async () => {
+    const status = await fetchInviteGateStatus()
+    setInviteGate(prev => ({
+      ...prev,
+      ...status,
+      error: null,
+      isSubmitting: false,
+      code: status.activated ? '' : prev.code,
+    }))
+    return status
+  }, [])
+
   const bootstrap = useCallback(async () => {
     if (!canBoot) {
-      setFatalError('缺少 Dify 配置，请先在 .env.local 中设置 APP_ID、APP_KEY 和 API_URL。')
+      setFatalError('缺少前端公开配置，请先设置 NEXT_PUBLIC_APP_ID。Dify 的 API Key 与 API URL 需要放在服务端环境变量 DIFY_API_KEY、DIFY_API_URL。')
       setIsLoading(false)
       return
     }
@@ -322,12 +352,13 @@ const ChatWorkspace = () => {
     setFatalError(null)
 
     try {
-      const [parametersResponse, conversationsResponse] = await Promise.all([
+      const [parametersResponse, conversationsResponse, inviteGateStatus] = await Promise.all([
         fetchAppParams(),
         fetchConversations({
           limit: 50,
           sort_by: '-updated_at',
         }),
+        refreshInviteGate(),
       ])
 
       const { promptVariables, unsupportedVariables } = inspectUserInputsForm(parametersResponse?.user_input_form || [])
@@ -337,6 +368,12 @@ const ChatWorkspace = () => {
       setUnsupportedVariables(unsupportedVariables)
       setCurrentInputs(mergeInputsWithDefaults(promptVariables))
       setConversations(conversationsResponse.data || [])
+      setInviteGate(prev => ({
+        ...prev,
+        ...inviteGateStatus,
+        error: null,
+        isSubmitting: false,
+      }))
     }
     catch (error) {
       setFatalError(await getErrorMessage(error))
@@ -344,7 +381,7 @@ const ChatWorkspace = () => {
     finally {
       setIsLoading(false)
     }
-  }, [canBoot])
+  }, [canBoot, refreshInviteGate])
 
   useEffect(() => {
     bootstrap().catch(() => {})
@@ -449,6 +486,14 @@ const ChatWorkspace = () => {
   }
 
   const handleStartChat = () => {
+    if (inviteGate.enabled && !inviteGate.activated) {
+      Toast.notify({
+        type: 'info',
+        message: '请先输入邀请码，再开始聊天。',
+      })
+      return
+    }
+
     if (!validateInputs())
       return
     setHasEnteredChat(true)
@@ -584,6 +629,22 @@ const ChatWorkspace = () => {
     if (!content || isSending)
       return
 
+    if (inviteGate.enabled && !inviteGate.activated) {
+      Toast.notify({
+        type: 'error',
+        message: '请先输入邀请码，再发送消息。',
+      })
+      return
+    }
+
+    if (inviteGate.enabled && typeof inviteGate.remaining === 'number' && inviteGate.remaining <= 0) {
+      Toast.notify({
+        type: 'error',
+        message: '当前邀请码次数已用完。',
+      })
+      return
+    }
+
     if (!validateInputs() || !validateAttachments())
       return
 
@@ -658,9 +719,10 @@ const ChatWorkspace = () => {
       onCompleted: async () => {
         setIsSending(false)
         setAttachments([])
+        await refreshInviteGate()
         await refreshConversations(streamConversationId)
       },
-      onError: (message) => {
+      onError: async (message) => {
         setIsSending(false)
         setMessages(prev => prev.map(item => item.id === assistantMessageId
           ? {
@@ -670,8 +732,41 @@ const ChatWorkspace = () => {
             content: item.content || (typeof message === 'string' ? message : '对话发送失败'),
           }
           : item))
+        await refreshInviteGate().catch(() => {})
       },
     })
+  }
+
+  const handleActivateInvite = async () => {
+    const inviteCode = inviteGate.code.trim()
+    if (!inviteCode) {
+      setInviteGate(prev => ({ ...prev, error: '请输入邀请码。' }))
+      return
+    }
+
+    setInviteGate(prev => ({ ...prev, isSubmitting: true, error: null }))
+
+    try {
+      const status = await activateInviteCode(inviteCode)
+      setInviteGate({
+        ...status,
+        code: '',
+        error: null,
+        isSubmitting: false,
+      })
+      Toast.notify({
+        type: 'success',
+        message: `邀请码已生效，当前剩余 ${status.remaining ?? 0} 次。`,
+      })
+    }
+    catch (error) {
+      const message = await getErrorMessage(error)
+      setInviteGate(prev => ({
+        ...prev,
+        error: message,
+        isSubmitting: false,
+      }))
+    }
   }
 
   const handleRenameConversation = async () => {
@@ -1011,6 +1106,18 @@ const ChatWorkspace = () => {
             </div>
           )}
 
+          {inviteGate.enabled && inviteGate.activated && (
+            <div className={`mb-3 rounded-2xl border px-4 py-3 text-sm ${
+              (inviteGate.remaining || 0) > 0
+                ? 'border-[#d7def8] bg-[#f6f8ff] text-[#4053a5]'
+                : 'border-[#f7c5be] bg-[#fff6f4] text-[#9a3412]'
+            }`}
+            >
+              当前邀请码剩余 {inviteGate.remaining ?? 0} / {inviteGate.quota ?? 0} 次。
+              这版按浏览器会话统计，清除 cookie 或更换设备会被识别为新会话。
+            </div>
+          )}
+
           <div className="rounded-[28px] border border-[#dde3ef] bg-[#f9fafe] px-3 py-3 shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
             {attachments.length > 0 && (
               <div className="mb-3 flex flex-wrap gap-2 px-2">
@@ -1096,7 +1203,12 @@ const ChatWorkspace = () => {
                 onClick={() => {
                   handleSendMessage().catch(() => {})
                 }}
-                disabled={!draft.trim() || isSending || unsupportedVariables.length > 0 || isUploadingAttachments}
+                disabled={!draft.trim()
+                  || isSending
+                  || unsupportedVariables.length > 0
+                  || isUploadingAttachments
+                  || (inviteGate.enabled && !inviteGate.activated)
+                  || (inviteGate.enabled && typeof inviteGate.remaining === 'number' && inviteGate.remaining <= 0)}
                 className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#3e63f5] text-white transition hover:bg-[#3557df] disabled:cursor-not-allowed disabled:bg-[#9fb0f8]"
               >
                 <PaperAirplaneIcon className="h-5 w-5" />
@@ -1256,6 +1368,48 @@ const ChatWorkspace = () => {
                 删除
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {inviteGate.enabled && !inviteGate.activated && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-[#111827]/45 p-4 backdrop-blur-[3px]">
+          <div className="w-full max-w-md rounded-[28px] border border-[#e5e7ef] bg-white p-6 shadow-[0_24px_80px_rgba(15,23,42,0.18)]">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#eef2ff] text-[#4a67f5]">
+              <ChatBubbleLeftRightIcon className="h-6 w-6" />
+            </div>
+            <div className="mt-4 text-xl font-semibold text-[#243041]">输入邀请码后开始试用</div>
+            <p className="mt-3 text-sm leading-7 text-[#667085]">
+              当前应用开启了 MVP 次数限制。输入正确邀请码后，你会获得 {inviteGate.quota ?? '设定'} 次发送额度。
+              这版额度按浏览器会话统计，不会跨设备同步。
+            </p>
+            <input
+              value={inviteGate.code}
+              onChange={event => setInviteGate(prev => ({ ...prev, code: event.target.value, error: null }))}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault()
+                  handleActivateInvite().catch(() => {})
+                }
+              }}
+              className="mt-5 w-full rounded-2xl border border-[#dde3ef] bg-[#f8f9fc] px-4 py-3 text-sm outline-none transition focus:border-[#4a67f5] focus:bg-white"
+              placeholder="请输入邀请码"
+            />
+            {inviteGate.error && (
+              <div className="mt-3 rounded-2xl border border-[#f7c5be] bg-[#fff6f4] px-4 py-3 text-sm text-[#9a3412]">
+                {inviteGate.error}
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                handleActivateInvite().catch(() => {})
+              }}
+              disabled={inviteGate.isSubmitting}
+              className="mt-5 w-full rounded-2xl bg-[#3e63f5] px-4 py-3.5 text-sm font-semibold text-white transition hover:bg-[#3557df] disabled:cursor-not-allowed disabled:bg-[#9fb0f8]"
+            >
+              {inviteGate.isSubmitting ? '正在校验邀请码…' : '确认邀请码'}
+            </button>
           </div>
         </div>
       )}

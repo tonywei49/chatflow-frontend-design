@@ -1,17 +1,28 @@
-import { type NextRequest } from 'next/server'
+import { type NextRequest, NextResponse } from 'next/server'
 import { difyRequest, getInfo, proxyDifyResponse } from '@/app/api/utils/common'
+import { InviteGateError, consumeInviteQuota } from '@/app/api/utils/invite'
 
 export async function POST(request: NextRequest) {
-  const body = await request.json()
-  const { sessionId, user } = getInfo(request)
+  try {
+    const body = await request.json()
+    const { sessionId, user } = getInfo(request)
 
-  const response = await difyRequest('/chat-messages', {
-    method: 'POST',
-    body: {
-      ...body,
-      user,
-    },
-  })
+    await consumeInviteQuota(sessionId)
 
-  return proxyDifyResponse(response, sessionId)
+    const response = await difyRequest('/chat-messages', {
+      method: 'POST',
+      body: {
+        ...body,
+        user,
+      },
+    })
+
+    return proxyDifyResponse(response, sessionId)
+  }
+  catch (error) {
+    if (error instanceof InviteGateError)
+      return NextResponse.json({ message: error.message }, { status: error.status })
+
+    throw error
+  }
 }

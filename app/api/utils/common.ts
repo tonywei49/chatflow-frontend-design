@@ -1,10 +1,12 @@
 import { type NextRequest } from 'next/server'
 import { CompletionClient } from 'dify-client'
 import { v4 } from 'uuid'
-import { API_KEY, API_URL, APP_ID } from '@/config'
+import { APP_ID } from '@/config'
 
 const userPrefix = `user_${APP_ID}:`
 const SESSION_COOKIE_NAME = 'session_id'
+const DIFY_API_KEY = process.env.DIFY_API_KEY?.trim() || ''
+const DIFY_API_URL = process.env.DIFY_API_URL?.trim() || ''
 
 export const getInfo = (request: NextRequest) => {
   const sessionId = request.cookies.get(SESSION_COOKIE_NAME)?.value || v4()
@@ -19,12 +21,21 @@ export const setSession = (sessionId: string) => {
   return { 'Set-Cookie': `${SESSION_COOKIE_NAME}=${sessionId}; Path=/; SameSite=Lax` }
 }
 
-export const client = new CompletionClient(API_KEY, API_URL || undefined)
+const getDifyApiKey = () => {
+  if (!DIFY_API_KEY)
+    throw new Error('Missing DIFY_API_KEY')
+
+  return DIFY_API_KEY
+}
+
+export const getClient = () => {
+  return new CompletionClient(getDifyApiKey(), DIFY_API_URL || undefined)
+}
 
 const getApiBaseUrl = () => {
-  const rawUrl = API_URL?.trim()
+  const rawUrl = DIFY_API_URL
   if (!rawUrl)
-    throw new Error('Missing NEXT_PUBLIC_API_URL')
+    throw new Error('Missing DIFY_API_URL')
 
   const normalizedUrl = new URL(rawUrl)
   const isLocalHost = ['localhost', '127.0.0.1', '0.0.0.0'].includes(normalizedUrl.hostname)
@@ -61,7 +72,7 @@ export const difyRequest = async (
   }
 
   const requestHeaders = new Headers(headers)
-  requestHeaders.set('Authorization', `Bearer ${API_KEY}`)
+  requestHeaders.set('Authorization', `Bearer ${getDifyApiKey()}`)
 
   let requestBody: BodyInit | undefined
   if (body !== undefined) {

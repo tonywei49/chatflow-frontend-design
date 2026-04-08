@@ -205,6 +205,13 @@ export type ChatAttachment = {
   errorMessage?: string
 }
 
+export type InviteGateStatus = {
+  enabled: boolean
+  activated: boolean
+  remaining: number | null
+  quota: number | null
+}
+
 export enum BlockEnum {
   Start = 'start',
   End = 'end',

@@ -1,6 +1,13 @@
 import type { IOnCompleted, IOnData, IOnError, IOnNodeFinished, IOnNodeStarted, IOnWorkflowFinished, IOnWorkflowStarted } from './base'
 import { del, get, post, ssePost, upload } from './base'
-import type { AppParametersResponse, ConversationListResponse, ConversationMessageListResponse, Feedbacktype, UploadedFile } from '@/types/app'
+import type {
+  AppParametersResponse,
+  ConversationListResponse,
+  ConversationMessageListResponse,
+  Feedbacktype,
+  InviteGateStatus,
+  UploadedFile,
+} from '@/types/app'
 
 export const sendChatMessage = async (body: Record<string, any>, { onData, onCompleted, onError }: {
   onData: IOnData
@@ -39,6 +46,16 @@ export const sendWorkflowMessage = async (
 
 export const fetchAppParams = async () => {
   return get('parameters') as Promise<AppParametersResponse>
+}
+
+export const fetchInviteGateStatus = async () => {
+  return get('invite/status') as Promise<InviteGateStatus>
+}
+
+export const activateInviteCode = async (inviteCode: string) => {
+  return post('invite/activate', {
+    body: { inviteCode },
+  }) as Promise<InviteGateStatus>
 }
 
 export const fetchConversations = async (params?: {

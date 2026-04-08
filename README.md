@@ -1,4 +1,4 @@
-# Text Generator Web App Template
+# Chatflow Frontend Design
 
 This is a [Next.js](https://nextjs.org/) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
 
@@ -9,14 +9,37 @@ Create a file named `.env.local` in the current directory and copy the contents 
 ```
 # APP ID
 NEXT_PUBLIC_APP_ID=
-# APP API key
-NEXT_PUBLIC_APP_KEY=
-# APP API URL
-NEXT_PUBLIC_API_URL=
+# Dify API key (server only)
+DIFY_API_KEY=
+# Dify API URL (server only)
+DIFY_API_URL=
 # APP type
 # true for workflow apps
 NEXT_PUBLIC_APP_TYPE_WORKFLOW=
 ```
+
+If you want to enable the MVP invite-code gate, you must explicitly add all of the following server-side variables. This feature does not silently downgrade to local-only counting:
+
+```env
+INVITE_GATE_ENABLED=true
+INVITE_CODE=your-invite-code
+INVITE_QUOTA=5
+
+# Either Upstash Redis:
+UPSTASH_REDIS_REST_URL=
+UPSTASH_REDIS_REST_TOKEN=
+
+# Or Vercel KV integration:
+# KV_REST_API_URL=
+# KV_REST_API_TOKEN=
+```
+
+MVP behavior of the invite gate:
+
+- Entering the correct invite code grants the current browser session `INVITE_QUOTA` message sends.
+- The quota is consumed when the server accepts a send request and forwards it to Dify.
+- The quota is keyed by the current `session_id` cookie, so clearing cookies, changing browsers, or changing devices creates a new quota scope.
+- This is intentional MVP behavior, not an account-level entitlement system.
 
 Config more in `config/index.ts` file:
 

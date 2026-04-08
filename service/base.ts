@@ -198,6 +198,24 @@ const handleStream = (
   read()
 }
 
+const extractResponseErrorMessage = async (response: Response) => {
+  try {
+    const data = await response.clone().json()
+    if (typeof data?.message === 'string' && data.message.trim())
+      return data.message
+  }
+  catch {}
+
+  try {
+    const text = await response.text()
+    if (text.trim())
+      return text
+  }
+  catch {}
+
+  return `请求失败 (${response.status})`
+}
+
 const baseFetch = (url: string, fetchOptions: any, { needAllResponseContent }: IOtherOptions) => {
   const options = Object.assign({}, baseOptions, fetchOptions)
 
@@ -361,17 +379,14 @@ export const ssePost = (
     options.body = JSON.stringify(body)
 
   globalThis.fetch(urlWithPrefix, options)
-    .then((res: any) => {
+    .then(async (res: any) => {
       if (!/^(2|3)\d{2}$/.test(res.status)) {
-        // eslint-disable-next-line no-new
-        new Promise(() => {
-          res.json().then((data: any) => {
-            Toast.notify({ type: 'error', message: data.message || 'Server Error' })
-          })
-        })
-        onError?.('Server Error')
+        const message = await extractResponseErrorMessage(res)
+        Toast.notify({ type: 'error', message })
+        onError?.(message)
         return
       }
+
       return handleStream(res, (str: string, isFirstMessage: boolean, moreInfo: IOnDataMoreInfo) => {
         if (moreInfo.errorMessage) {
           Toast.notify({ type: 'error', message: moreInfo.errorMessage })
@@ -380,8 +395,9 @@ export const ssePost = (
         onData?.(str, isFirstMessage, moreInfo)
       }, onCompleted, onWorkflowStarted, onWorkflowFinished, onNodeStarted, onNodeFinished)
     }).catch((e) => {
-      Toast.notify({ type: 'error', message: e })
-      onError?.(e)
+      const message = e instanceof Error ? e.message : String(e)
+      Toast.notify({ type: 'error', message })
+      onError?.(message)
     })
 }
 
