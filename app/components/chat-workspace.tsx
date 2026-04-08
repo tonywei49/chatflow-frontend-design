@@ -59,6 +59,8 @@ type InviteActivationState = InviteGateStatus & {
   isSubmitting: boolean
 }
 
+const MULTI_TURN_DISABLED_MARKER = '--------测试版本不支持多轮对话--------'
+
 const FILE_EXTENSION_MAP: Record<FileUploadCategory, string[]> = {
   document: ['.txt', '.md', '.markdown', '.mdx', '.pdf', '.html', '.xlsx', '.xls', '.vtt', '.properties', '.doc', '.docx', '.csv', '.eml', '.msg', '.pptx', '.ppt', '.xml', '.epub'],
   image: ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg'],
@@ -319,6 +321,10 @@ const ChatWorkspace = () => {
   }, [allowedFileTypes])
 
   const isUploadingAttachments = attachments.some(item => item.status === 'uploading')
+  const isMultiTurnLocked = useMemo(() => {
+    const lastAssistantMessage = [...messages].reverse().find(item => item.role === 'assistant')
+    return Boolean(lastAssistantMessage?.content?.includes(MULTI_TURN_DISABLED_MARKER))
+  }, [messages])
 
   const refreshConversations = async (_preferredConversationId?: string | null) => {
     const response = await fetchConversations({
@@ -628,6 +634,14 @@ const ChatWorkspace = () => {
     const content = draft.trim()
     if (!content || isSending)
       return
+
+    if (isMultiTurnLocked) {
+      Toast.notify({
+        type: 'info',
+        message: '测试版本不支持多轮对话。',
+      })
+      return
+    }
 
     if (inviteGate.enabled && !inviteGate.activated) {
       Toast.notify({
@@ -1019,20 +1033,28 @@ const ChatWorkspace = () => {
   const renderChatView = () => (
     <div className="flex h-full flex-col">
       <div className="border-b border-[#eef1f6] bg-white/80 px-4 py-4 md:px-6">
-        <div className="mx-auto flex w-full max-w-4xl items-center justify-between gap-4 rounded-[24px] border border-[#eef1f6] bg-white px-4 py-4 shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
-          <div className="flex min-w-0 items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#4a67f5] text-white">
-              <ChatBubbleLeftRightIcon className="h-4 w-4" />
+        <div className="mx-auto flex w-full max-w-4xl items-center justify-between gap-4">
+          <div className="flex min-w-0 flex-1 items-center justify-between gap-4 rounded-[24px] border border-[#eef1f6] bg-white px-4 py-4 shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#4a67f5] text-white">
+                <ChatBubbleLeftRightIcon className="h-4 w-4" />
+              </div>
+              <div className="min-w-0 truncate text-base font-semibold text-[#243041]">新对话设置</div>
             </div>
-            <div className="min-w-0 truncate text-base font-semibold text-[#243041]">新对话设置</div>
+            <button
+              type="button"
+              onClick={handleEditSettings}
+              className="shrink-0 rounded-2xl px-4 py-2 text-sm font-semibold text-[#4a67f5] transition hover:bg-[#f2f5ff]"
+            >
+              编辑
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={handleEditSettings}
-            className="shrink-0 rounded-2xl px-4 py-2 text-sm font-semibold text-[#4a67f5] transition hover:bg-[#f2f5ff]"
-          >
-            编辑
-          </button>
+
+          {inviteGate.enabled && inviteGate.activated && (
+            <div className="shrink-0 rounded-2xl border border-[#d7def8] bg-white px-4 py-3 text-sm font-semibold text-[#4a67f5] shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
+              剩余次数：{inviteGate.remaining ?? 0}/{inviteGate.quota ?? 0}
+            </div>
+          )}
         </div>
       </div>
 
@@ -1106,18 +1128,6 @@ const ChatWorkspace = () => {
             </div>
           )}
 
-          {inviteGate.enabled && inviteGate.activated && (
-            <div className={`mb-3 rounded-2xl border px-4 py-3 text-sm ${
-              (inviteGate.remaining || 0) > 0
-                ? 'border-[#d7def8] bg-[#f6f8ff] text-[#4053a5]'
-                : 'border-[#f7c5be] bg-[#fff6f4] text-[#9a3412]'
-            }`}
-            >
-              当前邀请码剩余 {inviteGate.remaining ?? 0} / {inviteGate.quota ?? 0} 次。
-              这版按浏览器会话统计，清除 cookie 或更换设备会被识别为新会话。
-            </div>
-          )}
-
           <div className="rounded-[28px] border border-[#dde3ef] bg-[#f9fafe] px-3 py-3 shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
             {attachments.length > 0 && (
               <div className="mb-3 flex flex-wrap gap-2 px-2">
@@ -1176,7 +1186,7 @@ const ChatWorkspace = () => {
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    disabled={!localUploadEnabled || isSending}
+                    disabled={!localUploadEnabled || isSending || isMultiTurnLocked}
                     className="flex h-11 w-11 items-center justify-center rounded-2xl border border-[#d5dbea] bg-white text-[#667085] transition hover:border-[#c6d0e3] hover:text-[#344054] disabled:cursor-not-allowed disabled:opacity-50"
                     aria-label="上传附件"
                   >
@@ -1188,6 +1198,7 @@ const ChatWorkspace = () => {
               <textarea
                 value={draft}
                 onChange={event => setDraft(event.target.value)}
+                disabled={isMultiTurnLocked}
                 onKeyDown={(event) => {
                   if (event.key === 'Enter' && !event.shiftKey) {
                     event.preventDefault()
@@ -1195,8 +1206,8 @@ const ChatWorkspace = () => {
                   }
                 }}
                 rows={1}
-                className="max-h-48 min-h-[44px] flex-1 resize-y border-none bg-transparent px-3 py-2 text-sm text-[#111827] outline-none"
-                placeholder="写上这封邮件的主要诉求或期望达成目的"
+                className="max-h-48 min-h-[44px] flex-1 resize-y border-none bg-transparent px-3 py-2 text-sm text-[#111827] outline-none disabled:cursor-not-allowed disabled:text-[#98a2b3]"
+                placeholder={isMultiTurnLocked ? '测试版本不支持多轮对话' : '写上这封邮件的主要诉求或期望达成目的'}
               />
               <button
                 type="button"
@@ -1207,6 +1218,7 @@ const ChatWorkspace = () => {
                   || isSending
                   || unsupportedVariables.length > 0
                   || isUploadingAttachments
+                  || isMultiTurnLocked
                   || (inviteGate.enabled && !inviteGate.activated)
                   || (inviteGate.enabled && typeof inviteGate.remaining === 'number' && inviteGate.remaining <= 0)}
                 className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#3e63f5] text-white transition hover:bg-[#3557df] disabled:cursor-not-allowed disabled:bg-[#9fb0f8]"
@@ -1378,11 +1390,7 @@ const ChatWorkspace = () => {
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#eef2ff] text-[#4a67f5]">
               <ChatBubbleLeftRightIcon className="h-6 w-6" />
             </div>
-            <div className="mt-4 text-xl font-semibold text-[#243041]">输入邀请码后开始试用</div>
-            <p className="mt-3 text-sm leading-7 text-[#667085]">
-              当前应用开启了 MVP 次数限制。输入正确邀请码后，你会获得 {inviteGate.quota ?? '设定'} 次发送额度。
-              这版额度按浏览器会话统计，不会跨设备同步。
-            </p>
+            <div className="mt-4 text-xl font-semibold text-[#243041]">请输入邀请码</div>
             <input
               value={inviteGate.code}
               onChange={event => setInviteGate(prev => ({ ...prev, code: event.target.value, error: null }))}
