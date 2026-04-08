@@ -8,7 +8,11 @@ export enum MediaType {
 }
 
 const useBreakpoints = () => {
-  const [width, setWidth] = React.useState(globalThis.innerWidth)
+  const [width, setWidth] = React.useState(() => {
+    if (typeof window === 'undefined')
+      return 1024
+    return window.innerWidth
+  })
   const media = (() => {
     if (width <= 640)
       return MediaType.mobile

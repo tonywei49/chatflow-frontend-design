@@ -4,12 +4,13 @@ import { difyRequest, getInfo, proxyDifyResponse } from '@/app/api/utils/common'
 export async function GET(request: NextRequest) {
   const { sessionId, user } = getInfo(request)
   const { searchParams } = new URL(request.url)
-  const response = await difyRequest('/messages', {
+
+  const response = await difyRequest('/conversations', {
     query: {
       user,
-      conversation_id: searchParams.get('conversation_id'),
-      first_id: searchParams.get('first_id'),
+      last_id: searchParams.get('last_id'),
       limit: searchParams.get('limit'),
+      sort_by: searchParams.get('sort_by') || '-updated_at',
     },
   })
 

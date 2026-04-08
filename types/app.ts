@@ -18,6 +18,12 @@ export type PromptVariable = {
   max_length?: number
 }
 
+export type UnsupportedPromptVariable = {
+  key: string
+  name: string
+  type: string
+}
+
 export type PromptConfig = {
   prompt_template: string
   prompt_variables: PromptVariable[]
@@ -43,6 +49,101 @@ export type UserInputFormItem = {
   'text-input': TextTypeFormItem
 } | {
   'select': SelectTypeFormItem
+}
+
+export type ConversationItem = {
+  id: string
+  name: string
+  inputs?: Record<string, string | number>
+  status?: string
+  introduction?: string
+  created_at: number
+  updated_at: number
+}
+
+export type ConversationListResponse = {
+  data: ConversationItem[]
+  has_more: boolean
+  limit: number
+}
+
+export type FileUploadCategory = 'document' | 'image' | 'audio' | 'video' | 'custom'
+
+export type FileUploadOption = {
+  enabled: boolean
+  number_limits?: number
+  transfer_methods?: TransferMethod[]
+}
+
+export type FileUploadSystemConfig = {
+  file_size_limit?: number
+  image_file_size_limit?: number
+  audio_file_size_limit?: number
+  video_file_size_limit?: number
+  workflow_file_upload_limit?: number
+  batch_count_limit?: number
+  file_upload_limit?: number
+  image_file_batch_limit?: number
+  single_chunk_attachment_limit?: number
+  attachment_image_file_size_limit?: number
+}
+
+export type FileUploadConfig = {
+  enabled?: boolean
+  allowed_file_types?: FileUploadCategory[]
+  allowed_file_extensions?: string[]
+  allowed_file_upload_methods?: TransferMethod[]
+  number_limits?: number
+  fileUploadConfig?: FileUploadSystemConfig
+  document?: FileUploadOption
+  image?: FileUploadOption
+  audio?: FileUploadOption
+  video?: FileUploadOption
+  custom?: FileUploadOption
+}
+
+export type AppParametersResponse = {
+  opening_statement?: string
+  user_input_form?: UserInputFormItem[]
+  suggested_questions?: string[]
+  file_upload?: FileUploadConfig
+  system_parameters?: FileUploadSystemConfig
+}
+
+export type UploadedFile = {
+  id: string
+  name: string
+  size: number
+  extension: string
+  mime_type: string
+  created_by: number | string
+  created_at: number
+}
+
+export type MessageFile = {
+  id: string
+  type: string
+  url: string
+  belongs_to: 'user' | 'assistant'
+}
+
+export type ConversationMessage = {
+  id: string
+  conversation_id: string
+  inputs?: Record<string, string | number>
+  query: string
+  answer: string
+  message_files?: MessageFile[]
+  created_at: number
+  feedback?: {
+    rating?: MessageRating
+  }
+}
+
+export type ConversationMessageListResponse = {
+  data: ConversationMessage[]
+  has_more: boolean
+  limit: number
 }
 
 export const MessageRatings = ['like', 'dislike', null] as const
@@ -89,6 +190,19 @@ export type VisionFile = {
   transfer_method: TransferMethod
   url: string
   upload_file_id: string
+}
+
+export type ChatAttachment = {
+  localId: string
+  name: string
+  size: number
+  extension: string
+  mimeType: string
+  fileType: FileUploadCategory
+  progress: number
+  status: 'uploading' | 'uploaded' | 'error'
+  uploadFileId?: string
+  errorMessage?: string
 }
 
 export enum BlockEnum {

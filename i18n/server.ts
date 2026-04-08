@@ -6,9 +6,24 @@ import { match } from '@formatjs/intl-localematcher'
 import type { Locale } from '.'
 import { i18n } from '.'
 
+const normalizeLocaleList = (values: string[]) => {
+  return values.filter((value) => {
+    if (!value || value === '*')
+      return false
+
+    try {
+      Intl.getCanonicalLocales(value)
+      return true
+    }
+    catch {
+      return false
+    }
+  })
+}
+
 export const getLocaleOnServer = (): Locale => {
   // @ts-expect-error locales are readonly
-  const locales: string[] = i18n.locales
+  const locales: string[] = normalizeLocaleList([...i18n.locales])
 
   let languages: string[] | undefined
   // get locale from cookie
@@ -23,7 +38,11 @@ export const getLocaleOnServer = (): Locale => {
     languages = new Negotiator({ headers: negotiatorHeaders }).languages()
   }
 
+  const normalizedLanguages = normalizeLocaleList(languages)
+  if (!normalizedLanguages.length)
+    return i18n.defaultLocale
+
   // match locale
-  const matchedLocale = match(languages, locales, i18n.defaultLocale) as Locale
+  const matchedLocale = match(normalizedLanguages, locales, i18n.defaultLocale) as Locale
   return matchedLocale
 }

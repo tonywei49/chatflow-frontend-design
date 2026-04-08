@@ -1,13 +1,13 @@
 import type { IOnCompleted, IOnData, IOnError, IOnNodeFinished, IOnNodeStarted, IOnWorkflowFinished, IOnWorkflowStarted } from './base'
-import { get, post, ssePost } from './base'
-import type { Feedbacktype } from '@/types/app'
+import { del, get, post, ssePost, upload } from './base'
+import type { AppParametersResponse, ConversationListResponse, ConversationMessageListResponse, Feedbacktype, UploadedFile } from '@/types/app'
 
-export const sendCompletionMessage = async (body: Record<string, any>, { onData, onCompleted, onError }: {
+export const sendChatMessage = async (body: Record<string, any>, { onData, onCompleted, onError }: {
   onData: IOnData
   onCompleted: IOnCompleted
   onError: IOnError
 }) => {
-  return ssePost('completion-messages', {
+  return ssePost('chat-messages', {
     body: {
       ...body,
       response_mode: 'streaming',
@@ -38,7 +38,59 @@ export const sendWorkflowMessage = async (
 }
 
 export const fetchAppParams = async () => {
-  return get('parameters')
+  return get('parameters') as Promise<AppParametersResponse>
+}
+
+export const fetchConversations = async (params?: {
+  last_id?: string
+  limit?: number
+  sort_by?: string
+}) => {
+  return get('conversations', {
+    params,
+  }) as Promise<ConversationListResponse>
+}
+
+export const fetchConversationMessages = async (conversationId: string, params?: {
+  first_id?: string
+  limit?: number
+}) => {
+  return get('messages', {
+    params: {
+      conversation_id: conversationId,
+      ...params,
+    },
+  }) as Promise<ConversationMessageListResponse>
+}
+
+export const renameConversation = async (conversationId: string, body: {
+  name?: string
+  auto_generate?: boolean
+}) => {
+  return post(`/conversations/${conversationId}/name`, {
+    body,
+  })
+}
+
+export const deleteConversation = async (conversationId: string) => {
+  return del(`/conversations/${conversationId}`)
+}
+
+export const uploadChatFile = async ({
+  file,
+  onProgress,
+}: {
+  file: File
+  onProgress?: (event: ProgressEvent) => void
+}) => {
+  const formData = new FormData()
+  formData.append('file', file)
+
+  return upload({
+    xhr: new XMLHttpRequest(),
+    data: formData,
+    onprogress: onProgress,
+  }) as Promise<UploadedFile>
 }
 
 export const updateFeedback = async ({ url, body }: { url: string; body: Feedbacktype }) => {
