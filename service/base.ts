@@ -1,5 +1,6 @@
 import { API_PREFIX } from '@/config'
 import Toast from '@/app/components/base/toast'
+import { getDifyStreamMessageId, normalizeDifyStreamEvent } from '@/utils/dify-stream'
 
 const TIME_OUT = 5 * 60 * 1000 // five minutes
 
@@ -95,6 +96,7 @@ export type IOnDataMoreInfo = {
   conversationId: string | undefined
   messageId: string
   errorMessage?: string
+  replace?: boolean
 }
 
 export type IOnData = (message: string, isFirstMessage: boolean, moreInfo: IOnDataMoreInfo) => void
@@ -114,12 +116,6 @@ type IOtherOptions = {
   onWorkflowFinished?: IOnWorkflowFinished
   onNodeStarted?: IOnNodeStarted
   onNodeFinished?: IOnNodeFinished
-}
-
-function unicodeToChar(text: string) {
-  return text.replace(/\\u[0-9a-f]{4}/g, (_match, p1) => {
-    return String.fromCharCode(parseInt(p1, 16))
-  })
 }
 
 const handleStream = (
@@ -157,27 +153,31 @@ const handleStream = (
           catch (e) {
             onData('', isFirstMessage, {
               conversationId: bufferObj?.conversation_id,
-              messageId: bufferObj?.id,
+              messageId: getDifyStreamMessageId(bufferObj || {}),
             })
             return
           }
-          if (bufferObj.event === 'message') {
-            onData(unicodeToChar(bufferObj.answer), isFirstMessage, {
-              conversationId: bufferObj.conversation_id,
-              messageId: bufferObj.id,
+
+          const normalizedEvent = normalizeDifyStreamEvent(bufferObj)
+
+          if (normalizedEvent.kind === 'message') {
+            onData(normalizedEvent.text, isFirstMessage, {
+              conversationId: normalizedEvent.conversationId,
+              messageId: normalizedEvent.messageId,
+              replace: normalizedEvent.replace,
             })
             isFirstMessage = false
           }
-          else if (bufferObj.event === 'workflow_started') {
+          else if (normalizedEvent.kind === 'workflow_started') {
             onWorkflowStarted?.(bufferObj as WorkflowStartedResponse)
           }
-          else if (bufferObj.event === 'workflow_finished') {
+          else if (normalizedEvent.kind === 'workflow_finished') {
             onWorkflowFinished?.(bufferObj as WorkflowFinishedResponse)
           }
-          else if (bufferObj.event === 'node_started') {
+          else if (normalizedEvent.kind === 'node_started') {
             onNodeStarted?.(bufferObj as NodeStartedResponse)
           }
-          else if (bufferObj.event === 'node_finished') {
+          else if (normalizedEvent.kind === 'node_finished') {
             onNodeFinished?.(bufferObj as NodeFinishedResponse)
           }
         })

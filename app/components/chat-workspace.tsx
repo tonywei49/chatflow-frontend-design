@@ -724,7 +724,9 @@ const ChatWorkspace = () => {
           nextMessages[targetIndex] = {
             ...nextMessages[targetIndex],
             id: streamMessageId,
-            content: `${isFirstMessage ? '' : nextMessages[targetIndex].content}${chunk}`,
+            content: moreInfo.replace
+              ? chunk
+              : `${isFirstMessage ? '' : nextMessages[targetIndex].content}${chunk}`,
             pending: false,
           }
           return nextMessages
