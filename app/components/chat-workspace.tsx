@@ -40,7 +40,7 @@ import type {
 } from '@/types/app'
 import { TransferMethod } from '@/types/app'
 import Toast from '@/app/components/base/toast'
-import { createPromptInputDefaults, inspectUserInputsForm } from '@/utils/prompt'
+import { createPromptInputDefaults, inspectUserInputsForm, replaceVarWithValues } from '@/utils/prompt'
 
 type WorkspaceMode = 'setup' | 'chat'
 
@@ -319,6 +319,13 @@ const ChatWorkspace = () => {
       return ''
     return allowedFileTypes.map(type => FILE_TYPE_LABELS[type]).join('、')
   }, [allowedFileTypes])
+
+  const resolvedOpeningStatement = useMemo(() => {
+    if (!openingStatement)
+      return ''
+
+    return replaceVarWithValues(openingStatement, promptVariables, currentInputs)
+  }, [currentInputs, openingStatement, promptVariables])
 
   const isUploadingAttachments = attachments.some(item => item.status === 'uploading')
   const isMultiTurnLocked = useMemo(() => {
@@ -1068,14 +1075,14 @@ const ChatWorkspace = () => {
           : messages.length === 0
             ? (
               <div className="flex h-full items-center justify-center">
-                {openingStatement
+                {resolvedOpeningStatement
                   ? (
                     <div className="max-w-xl text-center">
                       <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#ffe7cc] text-[#8a4b08] shadow-sm">
                         <ChatBubbleLeftRightIcon className="h-6 w-6" />
                       </div>
                       <p className="text-[18px] font-medium leading-[1.85] text-[#5b6475] md:text-[22px]">
-                        {openingStatement}
+                        {resolvedOpeningStatement}
                       </p>
                     </div>
                   )
