@@ -1004,7 +1004,7 @@ const ChatWorkspace = () => {
           {promptVariables.length === 0
             ? (
               <div className="rounded-2xl border border-dashed border-[#d9dfeb] bg-[#fafbfe] px-4 py-5 text-sm text-[#667085]">
-                  当前 Dify 应用没有配置新对话变量。你可以直接进入聊天视图发送第一条消息。
+                  当前应用没有配置新对话变量。你可以直接进入聊天视图发送第一条消息。
               </div>
             )
             : (
