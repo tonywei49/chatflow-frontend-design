@@ -10,7 +10,7 @@ Create a file named `.env.local` in the current directory and copy the contents 
 # APP ID
 NEXT_PUBLIC_APP_ID=
 # App title shown in the UI
-NEXT_PUBLIC_APP_TITLE=
+NEXT_PUBLIC_APP_TITLE= 
 # Dify API key (server only)
 DIFY_API_KEY=
 # Dify API URL (server only)
