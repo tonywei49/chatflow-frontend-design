@@ -40,7 +40,7 @@ import type {
 } from '@/types/app'
 import { TransferMethod } from '@/types/app'
 import Toast from '@/app/components/base/toast'
-import { createPromptInputDefaults, inspectUserInputsForm } from '@/utils/prompt'
+import { createPromptInputDefaults, inspectUserInputsForm, replaceVarWithValues } from '@/utils/prompt'
 
 type WorkspaceMode = 'setup' | 'chat'
 
@@ -257,6 +257,9 @@ const ChatWorkspace = () => {
   const [attachments, setAttachments] = useState<ChatAttachment[]>([])
   const [isLoadingMessages, setIsLoadingMessages] = useState(false)
   const [isSending, setIsSending] = useState(false)
+  const [viewportHeight, setViewportHeight] = useState<number | null>(null)
+  const [isComposerFocused, setIsComposerFocused] = useState(false)
+  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false)
   const [inviteGate, setInviteGate] = useState<InviteActivationState>({
     enabled: false,
     activated: false,
@@ -291,8 +294,47 @@ const ChatWorkspace = () => {
   }, [])
 
   useEffect(() => {
+    if (!isCompact || typeof window === 'undefined') {
+      setViewportHeight(null)
+      setIsKeyboardVisible(false)
+      return
+    }
+
+    const viewport = window.visualViewport
+    const updateViewport = () => {
+      const nextHeight = Math.round(viewport?.height ?? window.innerHeight)
+      const baselineHeight = window.innerHeight
+      setViewportHeight(nextHeight)
+      setIsKeyboardVisible(baselineHeight - nextHeight > 120)
+    }
+
+    updateViewport()
+
+    viewport?.addEventListener('resize', updateViewport)
+    viewport?.addEventListener('scroll', updateViewport)
+    window.addEventListener('resize', updateViewport)
+
+    return () => {
+      viewport?.removeEventListener('resize', updateViewport)
+      viewport?.removeEventListener('scroll', updateViewport)
+      window.removeEventListener('resize', updateViewport)
+    }
+  }, [isCompact])
+
+  useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
   }, [messages, isSending])
+
+  useEffect(() => {
+    if (!isCompact || !(isComposerFocused || isKeyboardVisible))
+      return
+
+    const timer = window.setTimeout(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+    }, 120)
+
+    return () => window.clearTimeout(timer)
+  }, [isCompact, isComposerFocused, isKeyboardVisible])
 
   const canBoot = Boolean(APP_ID)
 
@@ -320,6 +362,24 @@ const ChatWorkspace = () => {
     return allowedFileTypes.map(type => FILE_TYPE_LABELS[type]).join('、')
   }, [allowedFileTypes])
 
+  const resolvedOpeningStatement = useMemo(() => {
+    if (!openingStatement)
+      return ''
+
+    return replaceVarWithValues(openingStatement, promptVariables, currentInputs)
+  }, [currentInputs, openingStatement, promptVariables])
+
+  const isCompactComposerMode = isCompact && workspaceMode === 'chat' && (isComposerFocused || isKeyboardVisible)
+  const workspaceViewportStyle = useMemo<React.CSSProperties | undefined>(() => {
+    if (!isCompact)
+      return undefined
+
+    const nextHeight = viewportHeight ? `${viewportHeight}px` : '100dvh'
+    return {
+      height: nextHeight,
+      minHeight: nextHeight,
+    }
+  }, [isCompact, viewportHeight])
   const isUploadingAttachments = attachments.some(item => item.status === 'uploading')
   const isMultiTurnLocked = useMemo(() => {
     const lastAssistantMessage = [...messages].reverse().find(item => item.role === 'assistant')
@@ -1032,33 +1092,35 @@ const ChatWorkspace = () => {
 
   const renderChatView = () => (
     <div className="flex h-full flex-col">
-      <div className="border-b border-[#eef1f6] bg-white/80 px-4 py-3 md:px-6">
-        <div className="mx-auto flex w-full max-w-4xl items-center justify-between gap-4">
-          <div className="flex min-w-0 flex-1 items-center justify-between gap-4 rounded-[22px] border border-[#eef1f6] bg-white px-4 py-3 shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
-            <div className="flex min-w-0 items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#4a67f5] text-white">
-                <ChatBubbleLeftRightIcon className="h-4 w-4" />
+      {!isCompactComposerMode && (
+        <div className="border-b border-[#eef1f6] bg-white/80 px-4 py-3 md:px-6">
+          <div className="mx-auto flex w-full max-w-4xl items-center justify-between gap-4">
+            <div className="flex min-w-0 flex-1 items-center justify-between gap-4 rounded-[22px] border border-[#eef1f6] bg-white px-4 py-3 shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#4a67f5] text-white">
+                  <ChatBubbleLeftRightIcon className="h-4 w-4" />
+                </div>
+                <div className="min-w-0 truncate text-[15px] font-semibold text-[#243041]">新对话设置</div>
               </div>
-              <div className="min-w-0 truncate text-[15px] font-semibold text-[#243041]">新对话设置</div>
+              <button
+                type="button"
+                onClick={handleEditSettings}
+                className="shrink-0 rounded-2xl px-3 py-1.5 text-sm font-semibold text-[#4a67f5] transition hover:bg-[#f2f5ff]"
+              >
+                编辑
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={handleEditSettings}
-              className="shrink-0 rounded-2xl px-3 py-1.5 text-sm font-semibold text-[#4a67f5] transition hover:bg-[#f2f5ff]"
-            >
-              编辑
-            </button>
+
+            {inviteGate.enabled && inviteGate.activated && (
+              <div className="shrink-0 rounded-2xl border border-[#d7def8] bg-white px-3 py-2 text-xs font-semibold text-[#4a67f5] shadow-[0_10px_30px_rgba(15,23,42,0.04)] md:px-4 md:text-sm">
+                剩余次数：{inviteGate.remaining ?? 0}/{inviteGate.quota ?? 0}
+              </div>
+            )}
           </div>
-
-          {inviteGate.enabled && inviteGate.activated && (
-            <div className="shrink-0 rounded-2xl border border-[#d7def8] bg-white px-3 py-2 text-xs font-semibold text-[#4a67f5] shadow-[0_10px_30px_rgba(15,23,42,0.04)] md:px-4 md:text-sm">
-              剩余次数：{inviteGate.remaining ?? 0}/{inviteGate.quota ?? 0}
-            </div>
-          )}
         </div>
-      </div>
+      )}
 
-      <div className="flex-1 overflow-y-auto px-4 py-6 md:px-6">
+      <div className={`flex-1 overflow-y-auto px-4 ${isCompactComposerMode ? 'py-3' : 'py-6'} md:px-6`}>
         {isLoadingMessages
           ? (
             <div className="flex h-full items-center justify-center text-sm text-[#8a93a6]">正在加载会话内容…</div>
@@ -1066,33 +1128,35 @@ const ChatWorkspace = () => {
           : messages.length === 0
             ? (
               <div className="flex h-full items-center justify-center">
-                {openingStatement
-                  ? (
-                    <div className="max-w-xl text-center">
-                      <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#ffe7cc] text-[#8a4b08] shadow-sm">
-                        <ChatBubbleLeftRightIcon className="h-6 w-6" />
-                      </div>
-                      <p className="text-[18px] font-medium leading-[1.85] text-[#5b6475] md:text-[22px]">
-                        {openingStatement}
-                      </p>
-                    </div>
-                  )
-                  : (
-                    <div className="max-w-xl rounded-[28px] border border-dashed border-[#dbe1ee] bg-white/80 px-6 py-8 text-center shadow-[0_16px_50px_rgba(15,23,42,0.04)]">
-                      <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#eef2ff] text-[#4a67f5]">
-                        <PaperAirplaneIcon className="h-6 w-6" />
-                      </div>
-                      <div className="text-lg font-semibold text-[#243041]">开始第一轮对话</div>
-                      <p className="mt-3 text-base leading-8 text-[#5b6475]">
-                            左侧会话列表会在消息发出后自动出现真实 Dify 会话。手机端默认以聊天窗口为主，列表会收进抽屉里。
-                      </p>
-                      {fileUploadEnabled && (
-                        <p className="mt-3 text-sm leading-6 text-[#8a93a6]">
-                              已同步 Dify 附件能力：支持 {availableFileTypesLabel}，最多 {attachmentLimit} 个附件。
+                {isCompactComposerMode
+                  ? <div ref={messagesEndRef} />
+                  : resolvedOpeningStatement
+                    ? (
+                      <div className="max-w-xl text-center">
+                        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#ffe7cc] text-[#8a4b08] shadow-sm">
+                          <ChatBubbleLeftRightIcon className="h-6 w-6" />
+                        </div>
+                        <p className="text-[18px] font-medium leading-[1.85] text-[#5b6475] md:text-[22px]">
+                          {resolvedOpeningStatement}
                         </p>
-                      )}
-                    </div>
-                  )}
+                      </div>
+                    )
+                    : (
+                      <div className="max-w-xl rounded-[28px] border border-dashed border-[#dbe1ee] bg-white/80 px-6 py-8 text-center shadow-[0_16px_50px_rgba(15,23,42,0.04)]">
+                        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#eef2ff] text-[#4a67f5]">
+                          <PaperAirplaneIcon className="h-6 w-6" />
+                        </div>
+                        <div className="text-lg font-semibold text-[#243041]">开始第一轮对话</div>
+                        <p className="mt-3 text-base leading-8 text-[#5b6475]">
+                        左侧会话列表会在消息发出后自动出现真实 Dify 会话。手机端默认以聊天窗口为主，列表会收进抽屉里。
+                        </p>
+                        {fileUploadEnabled && (
+                          <p className="mt-3 text-sm leading-6 text-[#8a93a6]">
+                          已同步 Dify 附件能力：支持 {availableFileTypesLabel}，最多 {attachmentLimit} 个附件。
+                          </p>
+                        )}
+                      </div>
+                    )}
               </div>
             )
             : (
@@ -1121,7 +1185,10 @@ const ChatWorkspace = () => {
       </div>
 
       <div className="border-t border-[#eaedf4] bg-white/92 px-4 py-4 backdrop-blur md:px-6">
-        <div className="mx-auto max-w-4xl">
+        <div
+          className="mx-auto max-w-4xl"
+          style={isCompact ? { paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 8px)' } : undefined}
+        >
           {unsupportedMessage && (
             <div className="mb-3 rounded-2xl border border-[#f7c5be] bg-[#fff6f4] px-4 py-3 text-sm text-[#9a3412]">
               当前 Dify 配置存在未支持字段：{unsupportedMessage}。聊天发送已被阻止。
@@ -1199,6 +1266,11 @@ const ChatWorkspace = () => {
                 value={draft}
                 onChange={event => setDraft(event.target.value)}
                 disabled={isMultiTurnLocked}
+                onFocus={() => {
+                  setIsComposerFocused(true)
+                  setSidebarOpen(false)
+                }}
+                onBlur={() => setIsComposerFocused(false)}
                 onKeyDown={(event) => {
                   if (event.key === 'Enter' && !event.shiftKey) {
                     event.preventDefault()
@@ -1271,7 +1343,10 @@ const ChatWorkspace = () => {
   }
 
   return (
-    <div className="h-full bg-[radial-gradient(circle_at_top,#ffffff_0%,#f6f7fb_38%,#f1f3f8_100%)] text-[#111827]">
+    <div
+      className="h-full bg-[radial-gradient(circle_at_top,#ffffff_0%,#f6f7fb_38%,#f1f3f8_100%)] text-[#111827]"
+      style={workspaceViewportStyle}
+    >
       <div className="flex h-full">
         {!isCompact && sidebar}
 
