@@ -297,15 +297,20 @@ const ChatWorkspace = () => {
     if (!isCompact || typeof window === 'undefined') {
       setViewportHeight(null)
       setIsKeyboardVisible(false)
+      document.documentElement.style.removeProperty('--app-viewport-height')
+      document.documentElement.style.removeProperty('--app-viewport-width')
       return
     }
 
     const viewport = window.visualViewport
     const updateViewport = () => {
       const nextHeight = Math.round(viewport?.height ?? window.innerHeight)
+      const nextWidth = Math.round(viewport?.width ?? window.innerWidth)
       const baselineHeight = window.innerHeight
       setViewportHeight(nextHeight)
       setIsKeyboardVisible(baselineHeight - nextHeight > 120)
+      document.documentElement.style.setProperty('--app-viewport-height', `${nextHeight}px`)
+      document.documentElement.style.setProperty('--app-viewport-width', `${nextWidth}px`)
     }
 
     updateViewport()
@@ -318,6 +323,8 @@ const ChatWorkspace = () => {
       viewport?.removeEventListener('resize', updateViewport)
       viewport?.removeEventListener('scroll', updateViewport)
       window.removeEventListener('resize', updateViewport)
+      document.documentElement.style.removeProperty('--app-viewport-height')
+      document.documentElement.style.removeProperty('--app-viewport-width')
     }
   }, [isCompact])
 
@@ -369,7 +376,8 @@ const ChatWorkspace = () => {
     return replaceVarWithValues(openingStatement, promptVariables, currentInputs)
   }, [currentInputs, openingStatement, promptVariables])
 
-  const isCompactComposerMode = isCompact && workspaceMode === 'chat' && (isComposerFocused || isKeyboardVisible)
+  const isCompactConstrainedViewport = isCompact && typeof viewportHeight === 'number' && viewportHeight < 720
+  const isCompactComposerMode = isCompact && workspaceMode === 'chat' && (isComposerFocused || isKeyboardVisible || isCompactConstrainedViewport)
   const workspaceViewportStyle = useMemo<React.CSSProperties | undefined>(() => {
     if (!isCompact)
       return undefined
@@ -1094,7 +1102,7 @@ const ChatWorkspace = () => {
   )
 
   const renderChatView = () => (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full min-h-0 flex-col">
       {!isCompactComposerMode && (
         <div className="border-b border-[#eef1f6] bg-white/80 px-4 py-3 md:px-6">
           <div className="mx-auto flex w-full max-w-4xl items-center justify-between gap-4">
@@ -1123,7 +1131,7 @@ const ChatWorkspace = () => {
         </div>
       )}
 
-      <div className={`flex-1 overflow-y-auto px-4 ${isCompactComposerMode ? 'py-3' : 'py-6'} md:px-6`}>
+      <div className={`min-h-0 flex-1 overflow-y-auto px-4 ${isCompactComposerMode ? 'py-3' : 'py-6'} md:px-6`}>
         {isLoadingMessages
           ? (
             <div className="flex h-full items-center justify-center text-sm text-[#8a93a6]">正在加载会话内容…</div>
@@ -1187,7 +1195,7 @@ const ChatWorkspace = () => {
             )}
       </div>
 
-      <div className="border-t border-[#eaedf4] bg-white/92 px-4 py-4 backdrop-blur md:px-6">
+      <div className="sticky bottom-0 z-10 border-t border-[#eaedf4] bg-white/92 px-4 py-4 backdrop-blur md:px-6">
         <div
           className="mx-auto max-w-4xl"
           style={isCompact ? { paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 8px)' } : undefined}
@@ -1347,13 +1355,13 @@ const ChatWorkspace = () => {
 
   return (
     <div
-      className="h-full bg-[radial-gradient(circle_at_top,#ffffff_0%,#f6f7fb_38%,#f1f3f8_100%)] text-[#111827]"
+      className="h-full min-h-0 bg-[radial-gradient(circle_at_top,#ffffff_0%,#f6f7fb_38%,#f1f3f8_100%)] text-[#111827]"
       style={workspaceViewportStyle}
     >
-      <div className="flex h-full">
+      <div className="flex h-full min-h-0">
         {!isCompact && sidebar}
 
-        <main className="relative flex-1 overflow-hidden">
+        <main className="relative flex-1 min-h-0 overflow-hidden">
           {isCompact && (
             <div className="flex items-center justify-between border-b border-[#e5e7ef] bg-white/90 px-4 py-3 backdrop-blur">
               <button

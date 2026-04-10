@@ -12,10 +12,14 @@ const LocaleLayout = ({
   return (
     <html lang={locale ?? 'en'} className="h-full">
       <body className="h-full">
-        <div className="overflow-x-auto">
+        <div className="overflow-hidden">
           <div
             className="w-screen min-w-[300px]"
-            style={{ minHeight: '100dvh', height: '100dvh' }}
+            style={{
+              width: 'var(--app-viewport-width, 100vw)',
+              minHeight: 'var(--app-viewport-height, 100dvh)',
+              height: 'var(--app-viewport-height, 100dvh)',
+            }}
           >
             {children}
           </div>
